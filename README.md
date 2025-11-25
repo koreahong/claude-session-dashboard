@@ -2,23 +2,54 @@
 
 Aggregate Claude Code usage data from multiple devices and visualize with Datawrapper.
 
+## Architecture
+
+```
+┌─────────────────────┐     ┌─────────────────────┐
+│  Device 1 (Mac)     │     │  Device 2 (Windows) │
+│  ~/.claude/projects │     │  ~/.claude/projects │
+└─────────┬───────────┘     └─────────┬───────────┘
+          │                           │
+          ▼                           ▼
+   extract_local.py             extract_local.py
+          │                           │
+          ▼                           ▼
+   data/mac-work/              data/windows/
+   aggregated_data.csv         aggregated_data.csv
+          │                           │
+          └───────────┬───────────────┘
+                      │ git push
+                      ▼
+              ┌───────────────┐
+              │ GitHub Actions │
+              │ (aggregate)    │
+              └───────┬───────┘
+                      │
+                      ▼
+              output/daily_summary.csv
+                      │
+                      ▼
+              ┌───────────────┐
+              │  Datawrapper  │
+              │  Dashboard    │
+              └───────────────┘
+```
+
 ## Structure
 
 ```
 ├── data/
-│   ├── device-1/projects/     # JSONL files from device 1
-│   ├── device-2/projects/     # JSONL files from device 2
-│   └── ...
+│   ├── mac-work/
+│   │   └── aggregated_data.csv    # Output from Device 1
+│   └── windows/
+│       └── aggregated_data.csv    # Output from Device 2
 ├── output/
-│   ├── daily_usage.csv        # Daily aggregated usage
-│   ├── block_usage.csv        # 5-hour block usage
-│   ├── model_usage.csv        # Usage by model
-│   └── summary.csv            # Summary statistics
+│   ├── all_usage.csv              # Combined from all devices
+│   ├── daily_summary.csv          # Daily totals
+│   └── summary.csv                # Overall statistics
 ├── scripts/
-│   ├── aggregate_usage.py     # Aggregation script
-│   └── sync_device.sh         # Device sync helper
-└── .github/workflows/
-    └── aggregate.yml          # GitHub Actions workflow
+│   ├── extract_local.py           # Run on each device
+│   └── aggregate_all_devices.py   # Runs on GitHub Actions
 ```
 
 ## Setup
@@ -30,75 +61,67 @@ git clone git@github.com:koreahong/claude-session-dashboard.git
 cd claude-session-dashboard
 ```
 
-### 2. Push data from each device
+### 2. Extract and push data from each device
 
-Option A: Use the sync script
+Run this manually when you want to update:
+
 ```bash
-export DEVICE_NAME="mac-work"  # or mac-home, windows-pc, etc.
-export REPO_PATH="$HOME/claude-session-dashboard"
-./scripts/sync_device.sh
-```
+# Extract usage data (reads ~/.claude/projects/)
+python scripts/extract_local.py --device <your-device-name>
 
-Option B: Manual copy
-```bash
-# Copy your Claude data
-cp -r ~/.claude/projects data/<your-device-name>/projects/
-
-# Commit and push
-git add data/
-git commit -m "Update data from <device-name>"
+# Push to repo
+git add data/<your-device-name>/
+git commit -m "Update usage data from <device-name>"
 git push
 ```
 
+Example device names: `mac-work`, `mac-home`, `windows-pc`, `linux-server`
+
 ### 3. GitHub Actions
 
-The workflow runs:
-- Automatically when data is pushed
-- Every hour (scheduled)
-- Manually via workflow_dispatch
+When you push, GitHub Actions automatically:
+1. Aggregates all device CSVs
+2. Generates combined output files
+3. (Optional) Pushes to Datawrapper
 
-It aggregates all device data and outputs CSV files.
+## CSV Columns
 
-## Output CSVs
+### aggregated_data.csv (per device)
 
-### daily_usage.csv
+| Column | Description |
+|--------|-------------|
+| device | Device name |
+| block_start | 5-hour block start time (ISO format) |
+| input_tokens | Input tokens in this block |
+| output_tokens | Output tokens in this block |
+| cache_creation_tokens | Cache creation tokens |
+| cache_read_tokens | Cache read tokens |
+| total_tokens | Sum of all tokens |
+| usage_percentage | % of estimated limit used |
+| estimated_limit | Estimated token limit |
+| models | Models used (comma-separated) |
+
+### daily_summary.csv (aggregated)
+
 | Column | Description |
 |--------|-------------|
 | date | YYYY-MM-DD |
-| input_tokens | Input tokens used |
-| output_tokens | Output tokens received |
-| cache_creation_tokens | Tokens for cache creation |
-| cache_read_tokens | Tokens read from cache |
-| total_tokens | Sum of all tokens |
-| models | Comma-separated model names |
-| session_count | Number of sessions |
-
-### block_usage.csv
-| Column | Description |
-|--------|-------------|
-| block_start | 5-hour block start time |
-| total_tokens | Tokens used in block |
-| usage_percentage | % of estimated limit |
-
-### model_usage.csv
-| Column | Description |
-|--------|-------------|
-| model | Model name |
-| input_tokens | Total input tokens |
-| output_tokens | Total output tokens |
+| total_tokens | Total tokens across all devices |
+| block_count | Number of 5-hour blocks |
+| device_count | Number of devices active |
+| devices | Device names (comma-separated) |
 
 ## Datawrapper Integration
 
-1. Go to [Datawrapper](https://www.datawrapper.de/)
-2. Create new chart
-3. Use GitHub raw URL for CSV:
+1. Create a chart at [Datawrapper](https://www.datawrapper.de/)
+2. Use GitHub raw URL:
    ```
-   https://raw.githubusercontent.com/koreahong/claude-session-dashboard/main/output/daily_usage.csv
+   https://raw.githubusercontent.com/koreahong/claude-session-dashboard/main/output/daily_summary.csv
    ```
-4. Set up auto-refresh (Datawrapper polls the URL)
+3. Or set up API push (see workflow file)
 
 ## Notes
 
-- Cost values are **estimated API costs**, not actual charges (subscription users pay fixed monthly fee)
-- Each device must push its own `~/.claude/projects/` data
-- 5-hour blocks match Claude's rate limit windows
+- **No secrets are pushed** - Only aggregated CSV data is stored in the repo
+- **Usage percentage** is estimated based on historical max usage
+- **5-hour blocks** match Claude's rate limit windows

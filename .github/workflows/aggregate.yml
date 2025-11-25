@@ -3,11 +3,11 @@ name: Aggregate Claude Usage Data
 on:
   push:
     paths:
-      - 'data/**'
+      - 'data/**/aggregated_data.csv'
   schedule:
     # Run every hour
     - cron: '0 * * * *'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   aggregate:
@@ -23,12 +23,27 @@ jobs:
           python-version: '3.11'
 
       - name: Run aggregation script
-        run: python scripts/aggregate_usage.py
+        run: python scripts/aggregate_all_devices.py
 
       - name: Commit and push CSV files
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add output/*.csv
-          git diff --staged --quiet || git commit -m "Update usage data CSVs [skip ci]"
+          git diff --staged --quiet || git commit -m "Update aggregated usage data [skip ci]"
           git push
+
+      # Optional: Push to Datawrapper
+      # Uncomment and configure DATAWRAPPER_API_TOKEN secret
+      # - name: Update Datawrapper
+      #   if: env.DATAWRAPPER_API_TOKEN != ''
+      #   env:
+      #     DATAWRAPPER_API_TOKEN: ${{ secrets.DATAWRAPPER_API_TOKEN }}
+      #     CHART_ID: ${{ vars.DATAWRAPPER_CHART_ID }}
+      #   run: |
+      #     curl -X PUT "https://api.datawrapper.de/v3/charts/${CHART_ID}/data" \
+      #       -H "Authorization: Bearer ${DATAWRAPPER_API_TOKEN}" \
+      #       -H "Content-Type: text/csv" \
+      #       --data-binary @output/daily_summary.csv
+      #     curl -X POST "https://api.datawrapper.de/v3/charts/${CHART_ID}/publish" \
+      #       -H "Authorization: Bearer ${DATAWRAPPER_API_TOKEN}"
