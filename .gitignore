@@ -1,0 +1,14 @@
+# Keep data structure but don't commit actual JSONL files by default
+# Uncomment below line if you want to exclude all data
+# data/*/projects/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
