@@ -3,13 +3,9 @@
 Extract Claude Code usage data from local ~/.claude/projects/ 
 and output aggregated CSV for the dashboard.
 
-Tracks:
-1. 5-hour session usage percentage (all models)
-2. Weekly usage percentage (all models)
-
 Usage:
     python scripts/extract_local.py --device mac-work
-    python scripts/extract_local.py --device mac-work --plan max5
+    python scripts/extract_local.py --device mac-work --session-limit 215000000 --weekly-limit 3300000000
 """
 
 import json
@@ -19,23 +15,6 @@ import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
-
-
-# Plan limits (estimated based on Anthropic documentation)
-PLAN_LIMITS = {
-    'pro': {
-        'session_tokens': 44_000_000,
-        'weekly_tokens': 300_000_000,
-    },
-    'max5': {
-        'session_tokens': 88_000_000,
-        'weekly_tokens': 600_000_000,
-    },
-    'max20': {
-        'session_tokens': 220_000_000,
-        'weekly_tokens': 1_500_000_000,
-    },
-}
 
 
 def parse_jsonl_file(file_path):
@@ -128,7 +107,7 @@ def extract_usage(claude_dir):
     return all_records
 
 
-def aggregate_by_5hour_block(records, plan_limits):
+def aggregate_by_5hour_block(records, session_limit):
     """Aggregate by 5-hour session blocks."""
     
     block_usage = defaultdict(lambda: {'total_tokens': 0})
@@ -148,9 +127,6 @@ def aggregate_by_5hour_block(records, plan_limits):
 
         block_usage[block_start]['total_tokens'] += total
 
-    # Calculate percentages
-    session_limit = plan_limits['session_tokens']
-    
     result = {}
     for block_start, data in block_usage.items():
         session_pct = (data['total_tokens'] / session_limit) * 100
@@ -162,7 +138,7 @@ def aggregate_by_5hour_block(records, plan_limits):
     return result
 
 
-def aggregate_by_week(records, plan_limits):
+def aggregate_by_week(records, weekly_limit):
     """Aggregate by week for weekly limits."""
     
     week_usage = defaultdict(lambda: {'total_tokens': 0, 'days_active': set()})
@@ -183,9 +159,6 @@ def aggregate_by_week(records, plan_limits):
         week_usage[week_start]['total_tokens'] += total
         week_usage[week_start]['days_active'].add(dt.date())
 
-    # Calculate percentages
-    weekly_limit = plan_limits['weekly_tokens']
-    
     result = {}
     for week_start, data in week_usage.items():
         weekly_pct = (data['total_tokens'] / weekly_limit) * 100
@@ -241,15 +214,15 @@ def write_weekly_csv(week_usage, output_path, device_name):
 def main():
     parser = argparse.ArgumentParser(description='Extract Claude Code usage data')
     parser.add_argument('--device', required=True, help='Device name (e.g., mac-work)')
-    parser.add_argument('--plan', default='max5', choices=['pro', 'max5', 'max20'],
-                        help='Claude plan for limit calculation (default: max5)')
+    parser.add_argument('--session-limit', type=int, default=215_000_000,
+                        help='Session (5-hour) token limit (default: 215M based on Claude display)')
+    parser.add_argument('--weekly-limit', type=int, default=3_300_000_000,
+                        help='Weekly token limit (default: 3.3B based on Claude display)')
     parser.add_argument('--claude-dir', default=os.path.expanduser('~/.claude'), 
                         help='Claude data directory (default: ~/.claude)')
     parser.add_argument('--output-dir', default=None,
                         help='Output directory (default: repo/data/<device>/)')
     args = parser.parse_args()
-
-    plan_limits = PLAN_LIMITS[args.plan]
 
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
@@ -262,9 +235,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Device: {args.device}")
-    print(f"Plan: {args.plan}")
-    print(f"  Session limit: {plan_limits['session_tokens']:,} tokens")
-    print(f"  Weekly limit: {plan_limits['weekly_tokens']:,} tokens")
+    print(f"Session limit: {args.session_limit:,} tokens")
+    print(f"Weekly limit: {args.weekly_limit:,} tokens")
     print()
 
     # Extract all records
@@ -273,10 +245,10 @@ def main():
     print()
 
     # Aggregate
-    block_usage = aggregate_by_5hour_block(records, plan_limits)
+    block_usage = aggregate_by_5hour_block(records, args.session_limit)
     print(f"5-hour blocks: {len(block_usage)}")
 
-    week_usage = aggregate_by_week(records, plan_limits)
+    week_usage = aggregate_by_week(records, args.weekly_limit)
     print(f"Weeks: {len(week_usage)}")
     print()
 
