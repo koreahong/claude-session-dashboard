@@ -5,10 +5,8 @@ Runs on GitHub Actions to combine all device CSVs.
 """
 
 import csv
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from collections import defaultdict
 
 
 def read_csv(csv_path):
@@ -26,7 +24,6 @@ def read_csv(csv_path):
 
 def aggregate_sessions(data_dir):
     """Aggregate session CSVs from all devices."""
-    
     data_path = Path(data_dir)
     session_csvs = list(data_path.glob('*/session_usage.csv'))
     
@@ -47,7 +44,6 @@ def aggregate_sessions(data_dir):
 
 def aggregate_weekly(data_dir):
     """Aggregate weekly CSVs from all devices."""
-    
     data_path = Path(data_dir)
     weekly_csvs = list(data_path.glob('*/weekly_usage.csv'))
     
@@ -66,7 +62,6 @@ def aggregate_weekly(data_dir):
 
 def write_combined_sessions(records, output_path):
     """Write combined session data."""
-    
     if not records:
         return
     
@@ -87,7 +82,6 @@ def write_combined_sessions(records, output_path):
 
 def write_combined_weekly(records, output_path):
     """Write combined weekly data."""
-    
     if not records:
         return
     
@@ -105,60 +99,10 @@ def write_combined_weekly(records, output_path):
     print(f"Written combined weekly to {output_path}")
 
 
-def write_daily_summary(session_records, output_path):
-    """Write daily summary from session records."""
-    
-    daily = defaultdict(lambda: {
-        'total_tokens': 0,
-        'sonnet_tokens': 0,
-        'session_count': 0,
-        'devices': set(),
-        'max_session_pct': 0,
-    })
-    
-    for record in session_records:
-        block_start = record.get('block_start', '')
-        if not block_start:
-            continue
-        
-        date = block_start.split('T')[0]
-        device = record.get('device', 'unknown')
-        
-        daily[date]['total_tokens'] += int(record.get('total_tokens', 0))
-        daily[date]['sonnet_tokens'] += int(record.get('sonnet_tokens', 0))
-        daily[date]['session_count'] += 1
-        daily[date]['devices'].add(device)
-        
-        session_pct = float(record.get('session_usage_pct', 0))
-        if session_pct > daily[date]['max_session_pct']:
-            daily[date]['max_session_pct'] = session_pct
-    
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(['date', 'total_tokens', 'sonnet_tokens', 'session_count', 
-                        'max_session_pct', 'device_count', 'devices'])
-        
-        for date in sorted(daily.keys()):
-            data = daily[date]
-            writer.writerow([
-                date,
-                data['total_tokens'],
-                data['sonnet_tokens'],
-                data['session_count'],
-                round(data['max_session_pct'], 2),
-                len(data['devices']),
-                ','.join(sorted(data['devices'])),
-            ])
-    
-    print(f"Written daily summary to {output_path}")
-
-
 def write_summary(session_records, weekly_records, devices, output_path):
     """Write overall summary."""
-    
     total_tokens = sum(int(r.get('total_tokens', 0)) for r in session_records)
     total_sessions = len(session_records)
-    total_weeks = len(weekly_records)
     
     # Get current week stats
     current_week = None
@@ -171,7 +115,6 @@ def write_summary(session_records, weekly_records, devices, output_path):
         writer.writerow(['metric', 'value'])
         writer.writerow(['total_tokens', total_tokens])
         writer.writerow(['total_sessions', total_sessions])
-        writer.writerow(['total_weeks', total_weeks])
         writer.writerow(['device_count', len(devices)])
         writer.writerow(['devices', ','.join(sorted(devices))])
         
@@ -209,10 +152,9 @@ def main():
     
     print()
     
-    # Write outputs
+    # Write outputs (no daily summary)
     write_combined_sessions(session_records, output_dir / 'all_sessions.csv')
     write_combined_weekly(weekly_records, output_dir / 'all_weekly.csv')
-    write_daily_summary(session_records, output_dir / 'daily_summary.csv')
     write_summary(session_records, weekly_records, devices, output_dir / 'summary.csv')
     
     print()
