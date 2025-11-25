@@ -1,0 +1,6 @@
+device,week_start,total_tokens,sonnet_tokens,weekly_all_pct,weekly_sonnet_pct,weekly_limit,days_active,models
+mac-work,2025-10-27,176329799,176279489,29.39,29.38,600000000,5,"<synthetic>,claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929"
+mac-work,2025-11-03,73865643,72705389,12.31,12.12,600000000,5,"<synthetic>,claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929"
+mac-work,2025-11-10,268375850,268092283,44.73,44.68,600000000,5,"<synthetic>,claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929"
+mac-work,2025-11-17,1597851861,1594957590,266.31,265.83,600000000,7,"<synthetic>,claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929"
+mac-work,2025-11-24,329233174,250199432,54.87,41.7,600000000,2,"<synthetic>,claude-haiku-4-5-20251001,claude-opus-4-5-20251101,claude-sonnet-4-5-20250929"

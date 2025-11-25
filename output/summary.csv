@@ -1,6 +1,10 @@
 metric,value
-total_tokens,2443203971
-total_blocks,56
+total_tokens,2445656327
+total_sessions,56
+total_weeks,5
 device_count,1
 devices,mac-work
-last_updated,2025-11-25T08:23:51.627425+00:00
+current_week,2025-11-24
+current_week_all_pct,54.87
+current_week_sonnet_pct,41.7
+last_updated,2025-11-25T08:28:52.390641+00:00
