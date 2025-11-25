@@ -65,9 +65,7 @@ def write_combined_sessions(records, output_path):
     if not records:
         return
     
-    fieldnames = ['device', 'block_start', 'total_tokens', 'sonnet_tokens',
-                  'input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens',
-                  'session_usage_pct', 'session_limit', 'models']
+    fieldnames = ['device', 'block_start', 'total_tokens', 'session_usage_pct']
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -85,8 +83,7 @@ def write_combined_weekly(records, output_path):
     if not records:
         return
     
-    fieldnames = ['device', 'week_start', 'total_tokens', 'sonnet_tokens',
-                  'weekly_all_pct', 'weekly_sonnet_pct', 'weekly_limit', 'days_active', 'models']
+    fieldnames = ['device', 'week_start', 'total_tokens', 'weekly_usage_pct', 'days_active']
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -104,7 +101,6 @@ def write_summary(session_records, weekly_records, devices, output_path):
     total_tokens = sum(int(r.get('total_tokens', 0)) for r in session_records)
     total_sessions = len(session_records)
     
-    # Get current week stats
     current_week = None
     if weekly_records:
         sorted_weekly = sorted(weekly_records, key=lambda r: r.get('week_start', ''), reverse=True)
@@ -120,8 +116,7 @@ def write_summary(session_records, weekly_records, devices, output_path):
         
         if current_week:
             writer.writerow(['current_week', current_week.get('week_start', '')])
-            writer.writerow(['current_week_all_pct', current_week.get('weekly_all_pct', '')])
-            writer.writerow(['current_week_sonnet_pct', current_week.get('weekly_sonnet_pct', '')])
+            writer.writerow(['current_week_usage_pct', current_week.get('weekly_usage_pct', '')])
         
         writer.writerow(['last_updated', datetime.now(timezone.utc).isoformat()])
     
@@ -139,10 +134,7 @@ def main():
     print(f"Scanning: {data_dir}")
     print()
     
-    # Aggregate sessions
     session_records, devices = aggregate_sessions(data_dir)
-    
-    # Aggregate weekly
     print()
     weekly_records = aggregate_weekly(data_dir)
     
@@ -152,7 +144,6 @@ def main():
     
     print()
     
-    # Write outputs (no daily summary)
     write_combined_sessions(session_records, output_dir / 'all_sessions.csv')
     write_combined_weekly(weekly_records, output_dir / 'all_weekly.csv')
     write_summary(session_records, weekly_records, devices, output_dir / 'summary.csv')

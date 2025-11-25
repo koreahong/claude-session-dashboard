@@ -1,5 +1,0 @@
-model,input_tokens,output_tokens,total_tokens
-<synthetic>,0,0,0
-claude-haiku-4-5-20251001,1150327,159014,6716642
-claude-opus-4-5-20251101,63772,162813,69950629
-claude-sonnet-4-5-20250929,1847175,12459927,2362234183

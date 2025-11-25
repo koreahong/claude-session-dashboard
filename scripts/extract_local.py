@@ -4,8 +4,8 @@ Extract Claude Code usage data from local ~/.claude/projects/
 and output aggregated CSV for the dashboard.
 
 Tracks:
-1. 5-hour session usage percentage
-2. Weekly usage percentage (All models + Sonnet only)
+1. 5-hour session usage percentage (all models)
+2. Weekly usage percentage (all models)
 
 Usage:
     python scripts/extract_local.py --device mac-work
@@ -16,25 +16,24 @@ import json
 import os
 import csv
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
-import glob
 
 
 # Plan limits (estimated based on Anthropic documentation)
 PLAN_LIMITS = {
     'pro': {
-        'session_tokens': 44_000_000,      # ~44M per 5-hour session
-        'weekly_tokens': 300_000_000,       # ~300M weekly estimate
+        'session_tokens': 44_000_000,
+        'weekly_tokens': 300_000_000,
     },
     'max5': {
-        'session_tokens': 88_000_000,       # ~88M per 5-hour session  
-        'weekly_tokens': 600_000_000,       # ~600M weekly estimate
+        'session_tokens': 88_000_000,
+        'weekly_tokens': 600_000_000,
     },
     'max20': {
-        'session_tokens': 220_000_000,      # ~220M per 5-hour session
-        'weekly_tokens': 1_500_000_000,     # ~1.5B weekly estimate
+        'session_tokens': 220_000_000,
+        'weekly_tokens': 1_500_000_000,
     },
 }
 
@@ -58,11 +57,9 @@ def parse_jsonl_file(file_path):
 
                         if usage:
                             timestamp = record.get('timestamp')
-                            model = message.get('model', 'unknown')
 
                             usage_records.append({
                                 'timestamp': timestamp,
-                                'model': model,
                                 'input_tokens': usage.get('input_tokens', 0),
                                 'output_tokens': usage.get('output_tokens', 0),
                                 'cache_creation_input_tokens': usage.get('cache_creation_input_tokens', 0),
@@ -104,11 +101,6 @@ def get_week_start(dt):
     return week_start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def is_sonnet_model(model_name):
-    """Check if model is a Sonnet variant."""
-    return 'sonnet' in model_name.lower()
-
-
 def extract_usage(claude_dir):
     """Extract usage data from all JSONL files."""
     
@@ -117,7 +109,6 @@ def extract_usage(claude_dir):
     
     print(f"Found {len(jsonl_files)} JSONL files")
 
-    # Storage for all records with parsed timestamps
     all_records = []
 
     for jsonl_file in jsonl_files:
@@ -140,15 +131,7 @@ def extract_usage(claude_dir):
 def aggregate_by_5hour_block(records, plan_limits):
     """Aggregate by 5-hour session blocks."""
     
-    block_usage = defaultdict(lambda: {
-        'input_tokens': 0,
-        'output_tokens': 0,
-        'cache_creation_tokens': 0,
-        'cache_read_tokens': 0,
-        'total_tokens': 0,
-        'sonnet_tokens': 0,
-        'models': set(),
-    })
+    block_usage = defaultdict(lambda: {'total_tokens': 0})
 
     for record in records:
         dt = record.get('datetime')
@@ -156,7 +139,6 @@ def aggregate_by_5hour_block(records, plan_limits):
             continue
 
         block_start = get_5hour_block_start(dt)
-        model = record.get('model', 'unknown')
         
         input_tokens = record.get('input_tokens', 0)
         output_tokens = record.get('output_tokens', 0)
@@ -164,15 +146,7 @@ def aggregate_by_5hour_block(records, plan_limits):
         cache_read = record.get('cache_read_input_tokens', 0)
         total = input_tokens + output_tokens + cache_creation + cache_read
 
-        block_usage[block_start]['input_tokens'] += input_tokens
-        block_usage[block_start]['output_tokens'] += output_tokens
-        block_usage[block_start]['cache_creation_tokens'] += cache_creation
-        block_usage[block_start]['cache_read_tokens'] += cache_read
         block_usage[block_start]['total_tokens'] += total
-        block_usage[block_start]['models'].add(model)
-        
-        if is_sonnet_model(model):
-            block_usage[block_start]['sonnet_tokens'] += total
 
     # Calculate percentages
     session_limit = plan_limits['session_tokens']
@@ -181,9 +155,8 @@ def aggregate_by_5hour_block(records, plan_limits):
     for block_start, data in block_usage.items():
         session_pct = (data['total_tokens'] / session_limit) * 100
         result[block_start] = {
-            **data,
+            'total_tokens': data['total_tokens'],
             'session_usage_pct': round(session_pct, 2),
-            'session_limit': session_limit,
         }
     
     return result
@@ -192,12 +165,7 @@ def aggregate_by_5hour_block(records, plan_limits):
 def aggregate_by_week(records, plan_limits):
     """Aggregate by week for weekly limits."""
     
-    week_usage = defaultdict(lambda: {
-        'total_tokens': 0,
-        'sonnet_tokens': 0,
-        'models': set(),
-        'days_active': set(),
-    })
+    week_usage = defaultdict(lambda: {'total_tokens': 0, 'days_active': set()})
 
     for record in records:
         dt = record.get('datetime')
@@ -205,7 +173,6 @@ def aggregate_by_week(records, plan_limits):
             continue
 
         week_start = get_week_start(dt)
-        model = record.get('model', 'unknown')
         
         input_tokens = record.get('input_tokens', 0)
         output_tokens = record.get('output_tokens', 0)
@@ -214,28 +181,19 @@ def aggregate_by_week(records, plan_limits):
         total = input_tokens + output_tokens + cache_creation + cache_read
 
         week_usage[week_start]['total_tokens'] += total
-        week_usage[week_start]['models'].add(model)
         week_usage[week_start]['days_active'].add(dt.date())
-        
-        if is_sonnet_model(model):
-            week_usage[week_start]['sonnet_tokens'] += total
 
     # Calculate percentages
     weekly_limit = plan_limits['weekly_tokens']
     
     result = {}
     for week_start, data in week_usage.items():
-        weekly_all_pct = (data['total_tokens'] / weekly_limit) * 100
-        weekly_sonnet_pct = (data['sonnet_tokens'] / weekly_limit) * 100
+        weekly_pct = (data['total_tokens'] / weekly_limit) * 100
         
         result[week_start] = {
             'total_tokens': data['total_tokens'],
-            'sonnet_tokens': data['sonnet_tokens'],
-            'weekly_all_pct': round(weekly_all_pct, 2),
-            'weekly_sonnet_pct': round(weekly_sonnet_pct, 2),
-            'weekly_limit': weekly_limit,
+            'weekly_usage_pct': round(weekly_pct, 2),
             'days_active': len(data['days_active']),
-            'models': data['models'],
         }
     
     return result
@@ -246,11 +204,7 @@ def write_session_csv(block_usage, output_path, device_name):
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow([
-            'device', 'block_start', 'total_tokens', 'sonnet_tokens',
-            'input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens',
-            'session_usage_pct', 'session_limit', 'models'
-        ])
+        writer.writerow(['device', 'block_start', 'total_tokens', 'session_usage_pct'])
 
         for block_start in sorted(block_usage.keys()):
             data = block_usage[block_start]
@@ -258,14 +212,7 @@ def write_session_csv(block_usage, output_path, device_name):
                 device_name,
                 block_start.isoformat(),
                 data['total_tokens'],
-                data['sonnet_tokens'],
-                data['input_tokens'],
-                data['output_tokens'],
-                data['cache_creation_tokens'],
-                data['cache_read_tokens'],
                 data['session_usage_pct'],
-                data['session_limit'],
-                ','.join(sorted(data['models'])),
             ])
 
     print(f"Written session data to {output_path}")
@@ -276,10 +223,7 @@ def write_weekly_csv(week_usage, output_path, device_name):
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow([
-            'device', 'week_start', 'total_tokens', 'sonnet_tokens',
-            'weekly_all_pct', 'weekly_sonnet_pct', 'weekly_limit', 'days_active', 'models'
-        ])
+        writer.writerow(['device', 'week_start', 'total_tokens', 'weekly_usage_pct', 'days_active'])
 
         for week_start in sorted(week_usage.keys()):
             data = week_usage[week_start]
@@ -287,12 +231,8 @@ def write_weekly_csv(week_usage, output_path, device_name):
                 device_name,
                 week_start.strftime('%Y-%m-%d'),
                 data['total_tokens'],
-                data['sonnet_tokens'],
-                data['weekly_all_pct'],
-                data['weekly_sonnet_pct'],
-                data['weekly_limit'],
+                data['weekly_usage_pct'],
                 data['days_active'],
-                ','.join(sorted(data['models'])),
             ])
 
     print(f"Written weekly data to {output_path}")
@@ -311,7 +251,6 @@ def main():
 
     plan_limits = PLAN_LIMITS[args.plan]
 
-    # Determine output directory
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
     
@@ -326,8 +265,6 @@ def main():
     print(f"Plan: {args.plan}")
     print(f"  Session limit: {plan_limits['session_tokens']:,} tokens")
     print(f"  Weekly limit: {plan_limits['weekly_tokens']:,} tokens")
-    print(f"Claude directory: {args.claude_dir}")
-    print(f"Output: {output_dir}")
     print()
 
     # Extract all records
@@ -335,11 +272,10 @@ def main():
     print(f"Total records: {len(records)}")
     print()
 
-    # Aggregate by 5-hour blocks
+    # Aggregate
     block_usage = aggregate_by_5hour_block(records, plan_limits)
     print(f"5-hour blocks: {len(block_usage)}")
 
-    # Aggregate by week
     week_usage = aggregate_by_week(records, plan_limits)
     print(f"Weeks: {len(week_usage)}")
     print()
@@ -360,22 +296,16 @@ def main():
     
     if current_block in block_usage:
         data = block_usage[current_block]
-        print(f"Current Session ({current_block.strftime('%Y-%m-%d %H:%M')}):")
+        print(f"Current Session ({current_block.strftime('%H:%M')}):")
         print(f"  Usage: {data['session_usage_pct']:.1f}%")
-        print(f"  Tokens: {data['total_tokens']:,} / {plan_limits['session_tokens']:,}")
     
     if current_week in week_usage:
         data = week_usage[current_week]
         print(f"\nWeekly Limit (week of {current_week.strftime('%Y-%m-%d')}):")
-        print(f"  All models: {data['weekly_all_pct']:.1f}%")
-        print(f"  Sonnet only: {data['weekly_sonnet_pct']:.1f}%")
-        print(f"  Tokens: {data['total_tokens']:,} / {plan_limits['weekly_tokens']:,}")
+        print(f"  Usage: {data['weekly_usage_pct']:.1f}%")
 
     print()
-    print("Done! Now you can:")
-    print(f"  git add data/{args.device}/")
-    print(f"  git commit -m 'Update usage data from {args.device}'")
-    print("  git push")
+    print(f"git add data/{args.device}/ && git commit -m 'Update {args.device}' && git push")
 
 
 if __name__ == '__main__':
